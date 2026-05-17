@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✨ 换装工具 - 静态版</title>
+    <!-- 拖拽排序库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <!-- ZIP 解压库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            height: 100vh;
+            background: #f5f5f5;
+        }
+        /* 左侧预览区 */
+        .left-panel {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: #fff;
+            border-right: 1px solid #ddd;
+        }
+        .canvas-wrapper {
+            position: relative;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 100%;
+            max-height: 80vh;
+            overflow: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #main-canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 80vh;
+            width: auto;
+            height: auto;
+            background-color: #ffffff;
+        }
+        .export-btn {
+            padding: 10px 25px;
+            background: #4a90d9;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: 0.2s;
+        }
+        .export-btn:hover { background: #357abd; }
+
+        /* 右侧控制区 */
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            overflow: hidden;
+        }
+        .top-bar {
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+            background: #fafafa;
+        }
+        .top-bar label { font-weight: 500; margin-right: 5px; }
+        .top-bar select, .top-bar input[type="file"] {
+            margin: 5px 0;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+        }
+        .preset-section {
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+            background: #fafafa;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .preset-section button, .preset-section input {
+            font-size: 13px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+        }
+        .preset-section button:hover { background: #f0f0f0; }
+        .preset-section input[type="text"] { width: 120px; }
+        .parts-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        .part-card {
+            background: #fff;
+            margin-bottom: 8px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: 0.2s;
+        }
+        .part-header {
+            display: flex;
+            align-items: center;
+            padding: 8px 10px;
+            background: #f9f9f9;
+            cursor: pointer;
+            user-select: none;
+        }
+        .part-header:hover { background: #f0f0f0; }
+        .drag-handle {
+            cursor: grab;
+            margin-right: 8px;
+            font-size: 18px;
+            color: #999;
+        }
+        .eye-btn {
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 18px;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
+        .eye-btn.hidden { opacity: 0.3; }
+        .part-name {
+            font-weight: 600;
+            flex: 1;
+        }
+        .current-img-name {
+            font-size: 12px;
+            color: #666;
+            margin-right: 10px;
+            max-width: 120px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        .layer-btns {
+            display: flex;
+            gap: 3px;
+        }
+        .layer-btn {
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 4px;
+            padding: 2px 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .layer-btn:hover { background: #f0f0f0; }
+        .part-body {
+            padding: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .thumb {
+            width: 55px;
+            height: 55px;
+            object-fit: contain;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            background: 
+                repeating-conic-gradient(#f0f0f0 0% 25%, transparent 0% 50%) 50% / 15px 15px;
+        }
+        .thumb.selected {
+            border-color: #4a90d9;
+        }
+        .footer-note {
+            padding: 8px 15px;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <!-- 帮助抽屉 -->
+    <div id="helpDrawer" style="position:fixed; top:0; left:-380px; width:380px; height:100%; background:white; z-index:902; box-shadow:2px 0 10px rgba(0,0,0,0.2); transition:left 0.3s ease; overflow-y:auto; padding:20px; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size:14px; line-height:1.6; color:#333;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="margin:0;">📖 使用帮助</h3>
+            <button id="closeDrawerBtn" style="background:none; border:none; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+        </div>
+        <hr><br>
+        <h4>📦 准备 ZIP 压缩包</h4>
+        <ul>
+            <li><b>单人模式</b>：ZIP 内直接包含部件文件夹（如 <code>头发/</code>、<code>上装/</code>），每个文件夹内放透明 PNG 图片。</li>
+            <li><b>多人模式</b>：ZIP 内先建人物文件夹（如 <code>人物A/</code>、<code>人物B/</code>），每个文件夹内再放部件文件夹。</li>
+            <li>按文件名排序，建议使用数字前缀（如 <code>0表情/</code>、<code>1前发/</code>等）控制顺序。</li>
+        </ul><br>
+        <h4>💾 预设文件</h4>
+        <ul>
+            <li>单人 ZIP：将 <code>preset.json</code> 放在部件同目录下即可自动加载，多人同理。</li>
+            <li><b>导出预设</b>：点击后输入文件名，会下载包含当前人物状态（含图层、可见性等）的 <code>.json</code> 文件。</li>
+            <li><b>导入预设</b>：选择一个 <code>.json</code> 文件，会自动保存到本地预设列表中。</li>
+            <li><b>导出 PNG</b> 时，若勾选“同时导出预设”，会额外下载一份当前状态对应的 <code>.json</code> 预设文件。</li>
+        </ul><br>
+        <h4>🎨 操作技巧</h4>
+        <ul>
+            <li>拖拽部件卡片调整显示顺序（不影响图层顺序）。</li>
+            <li>↑↓ 按钮调整图层叠加顺序（数字越大越靠上，覆盖数字小的部件）。</li>
+            <li>📋 按钮复制部件，副本可独立选择图片、调整图层，互不影响。</li>
+            <li>🔵 按钮切换部件显示/隐藏。</li>
+            <li>部件右侧显示当前选中的图片文件名，建议命名图片。</li>
+            <li>自适应窗口大小，导出图片为原始尺寸。</li>
+        </ul>
+    </div>
+
+    <!-- 打开抽屉的小按钮 -->
+    <button id="openDrawerBtn" style="position:fixed; top:20px; left:20px; z-index:901; background:#4a90d9; color:white; border:none; border-radius:50%; width:40px; height:40px; font-size:20px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.2);">?</button>
+    <!-- 左侧预览 -->
+    <div class="left-panel">
+        <div class="canvas-wrapper">
+            <canvas id="main-canvas" width="400" height="500"></canvas>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <button class="export-btn" id="exportBtn">📥 导出 PNG</button>
+            <label style="font-size:14px; cursor:pointer;">
+                <input type="checkbox" id="exportWithPreset"> 同时导出预设
+            </label>
+        </div>
+    </div>
+
+    <!-- 右侧面板 -->
+    <div class="right-panel">
+        <div class="top-bar">
+            <label>📦 ZIP 资源包：</label>
+            <input type="file" id="zipInput" accept=".zip">
+            <label>👤 切换人物：</label>
+            <select id="charSelect">
+                <option>未加载</option>
+            </select>
+        </div>
+
+        <!-- 预设管理 -->
+        <div class="preset-section" style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; gap:8px; align-items:center;">
+                <button id="loadPresetFile">📂 导入预设</button>
+                <button id="savePresetFile">💾 导出预设</button>
+                <input type="file" id="presetFileInput" accept=".json" style="display:none;">
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <input type="text" id="localPresetName" placeholder="预设名" style="flex:1;">
+                <button id="saveLocalPreset">保存到本地</button>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <select id="localPresetSelect" style="flex:1;">
+                    <option value="">本地预设...</option>
+                </select>
+                <button id="loadLocalPreset">加载</button>
+                <button id="deleteLocalPreset">🗑️ 删除</button>
+            </div>
+        </div>
+
+        <!-- 部件列表 -->
+        <div class="parts-list" id="partsContainer">
+            <p style="text-align:center; color:#999; margin-top:20px;">请先上传 ZIP 资源包</p>
+        </div>
+    </div>
+
+    <script>
+        // ========== 全局状态 ==========
+        let characterData = {};           // { 人物: { 部件: [dataURL] } }
+        let currentCharacter = null;
+        let selectedImages = {};         // { 部件名: dataURL }
+        let displayOrder = [];           // 右侧显示顺序（部件名数组）
+        let renderOrder = [];            // 图层顺序（从底到顶）
+        let visibleParts = new Set();    // 可见的部件名集合
+        let autoPresets = {};            // 存储各人物的自动预设
+        let partInstances = [];          // { id: string, sourcePart: string, displayName: string }
+
+        // DOM 元素
+        const zipInput = document.getElementById('zipInput');
+        const charSelect = document.getElementById('charSelect');
+        const partsContainer = document.getElementById('partsContainer');
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d');
+        const exportBtn = document.getElementById('exportBtn');
+
+        // 预设相关
+        const savePresetFileBtn = document.getElementById('savePresetFile');
+        const loadPresetFileBtn = document.getElementById('loadPresetFile');
+        const presetFileInput = document.getElementById('presetFileInput');
+        const localPresetName = document.getElementById('localPresetName');
+        const saveLocalPresetBtn = document.getElementById('saveLocalPreset');
+        const localPresetSelect = document.getElementById('localPresetSelect');
+        const loadLocalPresetBtn = document.getElementById('loadLocalPreset');
+        const deleteLocalPresetBtn = document.getElementById('deleteLocalPreset');
+
+        // ========== ZIP 解析 ==========
+        zipInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            try {
+                const zip = await JSZip.loadAsync(file);
+                characterData = {};
+                autoPresets = {}; // 重置全局自动预设
+
+                // 收集所有 png 文件，并推断人物结构
+                const pngEntries = [];
+                const jsonEntries = [];
+                zip.forEach((relativePath, zipEntry) => {
+                    if (zipEntry.dir) return;
+                    if (relativePath.toLowerCase().endsWith('.png')) {
+                        pngEntries.push({ path: relativePath, entry: zipEntry });
+                    } else if (relativePath.toLowerCase().endsWith('.json')) {
+                        jsonEntries.push({ path: relativePath, entry: zipEntry });
+                    }
+                });
+
+                // 判断模式：
+                // 多人模式：顶层有文件夹，且文件夹内有图片（路径如 人物/部件/图片.png）
+                // 单人模式：顶层直接是部件文件夹（路径如 部件/图片.png）
+                let isMulti = false;
+                for (const item of pngEntries) {
+                    const parts = item.path.split('/');
+                    if (parts.length >= 3) { // 至少人物/部件/图片
+                        isMulti = true;
+                        break;
+                    }
+                }
+
+                if (isMulti) {
+                    // 多人模式：第一层文件夹即人物名
+                    const charMap = {};
+                    for (const item of pngEntries) {
+                        const parts = item.path.split('/');
+                        if (parts.length < 3) continue;
+                        const charName = parts[0];
+                        const partName = parts[1];
+                        const fileName = parts[2];
+                        if (!fileName.endsWith('.png')) continue;
+                        if (!charMap[charName]) charMap[charName] = {};
+                        if (!charMap[charName][partName]) charMap[charName][partName] = [];
+                        charMap[charName][partName].push({ name: fileName, entry: item.entry });
+                    }
+                    // 读取图片 base64
+                    const promises = [];
+                    for (const [charName, parts] of Object.entries(charMap)) {
+                        characterData[charName] = {};
+                        for (const [partName, imgs] of Object.entries(parts)) {
+                            characterData[charName][partName] = [];
+                            for (const img of imgs) {
+                                promises.push(
+                                    img.entry.async('base64').then(b64 => {
+                                        characterData[charName][partName].push({
+                                            name: img.name,
+                                            dataUrl: 'data:image/png;base64,' + b64
+                                        });
+                                    })
+                                );
+                            }
+                        }
+                    }
+                    await Promise.all(promises);
+
+                    // 尝试读取每个人物文件夹下的 preset.json
+                    for (const item of jsonEntries) {
+                        const parts = item.path.split('/');
+                        if (parts.length === 2 && parts[1].toLowerCase() === 'preset.json') {
+                            const charName = parts[0];
+                            try {
+                                const content = await item.entry.async('text');
+                                const preset = JSON.parse(content);
+                                if (preset && preset.character) {
+                                    autoPresets[charName] = preset;
+                                }
+                            } catch (e) { /* 忽略 */ }
+                        }
+                    }
+                } else {
+                    // 单人模式：ZIP 文件名作为人物名，根目录下直接是部件文件夹
+                    const charName = file.name.replace(/\.zip$/i, '');
+                    characterData[charName] = {};
+                    const partMap = {};
+                    for (const item of pngEntries) {
+                        const parts = item.path.split('/');
+                        if (parts.length < 2) continue;
+                        const partName = parts[0];
+                        const fileName = parts[1];
+                        if (!fileName.endsWith('.png')) continue;
+                        if (!partMap[partName]) partMap[partName] = [];
+                        partMap[partName].push({ name: fileName, entry: item.entry });
+                    }
+                    const promises = [];
+                    for (const [partName, imgs] of Object.entries(partMap)) {
+                        characterData[charName][partName] = [];
+                        for (const img of imgs) {
+                            promises.push(
+                                img.entry.async('base64').then(b64 => {
+                                    characterData[charName][partName].push({
+                                        name: img.name,
+                                        dataUrl: 'data:image/png;base64,' + b64
+                                    });
+                                })
+                            );
+                        }
+                    }
+                    await Promise.all(promises);
+
+                    // 读取根目录下的 preset.json
+                    for (const item of jsonEntries) {
+                        if (item.path.toLowerCase() === 'preset.json') {
+                            try {
+                                const content = await item.entry.async('text');
+                                const preset = JSON.parse(content);
+                                if (preset && preset.character) {
+                                    autoPresets[charName] = preset;
+                                }
+                            } catch (e) { /* 忽略 */ }
+                            break;
+                        }
+                    }
+                }
+
+                if (Object.keys(characterData).length === 0) {
+                    alert('ZIP 中未找到符合结构的图片（单人：部件/图片.png，多人：人物/部件/图片.png）');
+                    return;
+                }
+
+                // 更新人物选择
+                const charNames = Object.keys(characterData);
+                charSelect.innerHTML = charNames.map(name => `<option>${name}</option>`).join('');
+                currentCharacter = charNames[0];
+                charSelect.value = currentCharacter;
+                const autoPreset = autoPresets[currentCharacter] || null;
+                initializeCharacter(autoPreset);
+                updateLocalPresetSelect();
+            } catch (err) {
+                alert('解析 ZIP 失败：' + err.message);
+            }
+        });
+
+        // 切换人物
+        charSelect.addEventListener('change', () => {
+            currentCharacter = charSelect.value;
+            const preset = autoPresets[currentCharacter] || null;
+            initializeCharacter(preset);
+        });
+
+        function initializeCharacter(autoPreset) {
+            if (!currentCharacter || !characterData[currentCharacter]) return;
+            const sourceParts = Object.keys(characterData[currentCharacter]);
+
+            if (autoPreset && autoPreset.character === currentCharacter && autoPreset.instances) {
+                // 有自动预设且包含实例信息
+                partInstances = autoPreset.instances.map(inst => ({
+                    id: inst.id,
+                    sourcePart: inst.sourcePart,
+                    displayName: inst.displayName || inst.id
+                }));
+                displayOrder = autoPreset.displayOrder || partInstances.map(i => i.id);
+                renderOrder = autoPreset.renderOrder || [...displayOrder];
+                visibleParts = new Set(autoPreset.visibleParts || displayOrder);
+                selectedImages = {};
+                const sel = autoPreset.selectedImages || {};
+                for (const inst of partInstances) {
+                    const idx = sel[inst.id];
+                    const images = getPartImages(inst.sourcePart);
+                    if (idx !== undefined && idx !== null && images[idx]) {
+                        selectedImages[inst.id] = images[idx].dataUrl;
+                    } else {
+                        selectedImages[inst.id] = null;
+                    }
+                }
+            } else {
+                // 无预设：为每个源部件创建一个实例，id 即源部件名
+                partInstances = sourceParts.map(p => ({
+                    id: p,
+                    sourcePart: p,
+                    displayName: p
+                }));
+                displayOrder = partInstances.map(i => i.id);
+                renderOrder = [...displayOrder].sort().reverse(); // 保证默认层级小号在上
+                visibleParts = new Set(displayOrder);
+                selectedImages = {};
+                partInstances.forEach(inst => { selectedImages[inst.id] = null; });
+            }
+
+            // 清除已经不存在的实例对应的状态（可选）
+            // 重建界面
+            buildPartsList();
+            redrawCanvas();
+        }
+
+        // ========== 构建右侧部件列表 ==========
+        function buildPartsList() {
+            if (!currentCharacter) return;
+            partsContainer.innerHTML = '';
+
+            // 使用 displayOrder 顺序构建卡片
+            for (const instId of displayOrder) {
+                const inst = partInstances.find(i => i.id === instId);
+                if (!inst) continue;
+                const sourcePart = inst.sourcePart;
+                const images = getPartImages(sourcePart);
+                const card = document.createElement('div');
+                card.className = 'part-card';
+                card.dataset.instanceId = inst.id;
+
+                // 头部
+                const header = document.createElement('div');
+                header.className = 'part-header';
+                header.innerHTML = `
+                    <span class="drag-handle">☰</span>
+                    <button class="eye-btn ${visibleParts.has(inst.id) ? '' : 'hidden'}" data-instance="${inst.id}">🔵</button>
+                    <span class="part-name">${inst.displayName}</span>
+                    <span class="current-img-name">${getCurrentImgNameForInstance(inst.id)}</span>
+                    <div class="layer-btns">
+                        <button class="layer-btn up-layer" data-instance="${inst.id}">↑</button>
+                        <span class="layer-index">${renderOrder.indexOf(inst.id) + 1}</span>
+                        <button class="layer-btn down-layer" data-instance="${inst.id}">↓</button>
+                    </div>
+                    <button class="copy-btn" data-instance="${inst.id}">📋</button>
+                    <button class="delete-btn" data-instance="${inst.id}">🗑️</button>
+                `;
+
+                const body = document.createElement('div');
+                body.className = 'part-body';
+                body.style.display = 'none';
+
+                header.addEventListener('click', (e) => {
+                    if (e.target.tagName === 'BUTTON' || e.target.classList.contains('drag-handle')) return;
+                    body.style.display = body.style.display === 'none' ? 'flex' : 'none';
+                });
+
+                // 缩略图
+                images.forEach((imgObj, idx) => {
+                    const thumb = document.createElement('img');
+                    thumb.src = imgObj.dataUrl;
+                    thumb.title = imgObj.name;
+                    thumb.className = 'thumb';
+                    if (selectedImages[inst.id] === imgObj.dataUrl) thumb.classList.add('selected');
+                    thumb.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        selectedImages[inst.id] = imgObj.dataUrl;
+                        refreshPartCardByInstance(inst.id);
+                        redrawCanvas();
+                    });
+                    body.appendChild(thumb);
+                });
+
+                card.appendChild(header);
+                card.appendChild(body);
+                partsContainer.appendChild(card);
+            }
+
+            // 拖拽排序
+            new Sortable(partsContainer, {
+                handle: '.drag-handle',
+                animation: 150,
+                onEnd: function(evt) {
+                    const newOrder = [];
+                    document.querySelectorAll('.part-card').forEach(card => {
+                        newOrder.push(card.dataset.instanceId);
+                    });
+                    displayOrder = newOrder;
+                }
+            });
+
+            // 事件委托
+            partsContainer.onclick = (e) => {
+                const instId = e.target.dataset.instance;
+                // 小眼睛
+                if (e.target.classList.contains('eye-btn')) {
+                    e.stopPropagation();
+                    if (visibleParts.has(instId)) {
+                        visibleParts.delete(instId);
+                    } else {
+                        visibleParts.add(instId);
+                    }
+                    refreshPartCardByInstance(instId);
+                    redrawCanvas();
+                }
+                // 图层上移 (↓ 按钮实际让实例索引增大，即更上层)
+                if (e.target.classList.contains('down-layer')) {
+                    e.stopPropagation();
+                    const idx = renderOrder.indexOf(instId);
+                    if (idx > 0) {
+                        [renderOrder[idx], renderOrder[idx-1]] = [renderOrder[idx-1], renderOrder[idx]];
+                        refreshAllLayerBtns();
+                        redrawCanvas();
+                    }
+                }
+                // 图层下移 (↑ 按钮)
+                if (e.target.classList.contains('up-layer')) {
+                    e.stopPropagation();
+                    const idx = renderOrder.indexOf(instId);
+                    if (idx < renderOrder.length - 1) {
+                        [renderOrder[idx], renderOrder[idx+1]] = [renderOrder[idx+1], renderOrder[idx]];
+                        refreshAllLayerBtns();
+                        redrawCanvas();
+                    }
+                }
+                // 复制
+                if (e.target.classList.contains('copy-btn')) {
+                    e.stopPropagation();
+                    const inst = partInstances.find(i => i.id === instId);
+                    if (inst) {
+                        const newId = generateUniqueId(inst.sourcePart);
+                        const newInst = {
+                            id: newId,
+                            sourcePart: inst.sourcePart,
+                            displayName: inst.displayName + ' (副本)'
+                        };
+                        partInstances.push(newInst);
+                        // 复制当前选择
+                        selectedImages[newId] = selectedImages[instId];
+                        visibleParts.add(newId);
+                        // 插入到当前实例后面
+                        const dispIdx = displayOrder.indexOf(instId);
+                        const rendIdx = renderOrder.indexOf(instId);
+                        displayOrder.splice(dispIdx + 1, 0, newId);
+                        renderOrder.splice(rendIdx + 1, 0, newId);
+                        buildPartsList();
+                        redrawCanvas();
+                    }
+                }
+                // 删除
+                if (e.target.classList.contains('delete-btn')) {
+                    e.stopPropagation();
+                    if (!confirm(`确定删除部件“${instId}”？`)) return;
+                    partInstances = partInstances.filter(i => i.id !== instId);
+                    displayOrder = displayOrder.filter(id => id !== instId);
+                    renderOrder = renderOrder.filter(id => id !== instId);
+                    visibleParts.delete(instId);
+                    delete selectedImages[instId];
+                    buildPartsList();
+                    redrawCanvas();
+                }
+            };
+        }
+
+
+        function generateUniqueId(baseName) {
+            let counter = 1;
+            let newId = `${baseName}_copy${counter}`;
+            while (partInstances.some(i => i.id === newId)) {
+                counter++;
+                newId = `${baseName}_copy${counter}`;
+            }
+            return newId;
+        }
+
+        function refreshPartCardByInstance(instId) {
+            const card = document.querySelector(`.part-card[data-instance-id="${instId}"]`);
+            if (!card) return;
+            const inst = partInstances.find(i => i.id === instId);
+            if (!inst) return;
+            const eyeBtn = card.querySelector('.eye-btn');
+            if (eyeBtn) eyeBtn.className = `eye-btn ${visibleParts.has(instId) ? '' : 'hidden'}`;
+            const nameSpan = card.querySelector('.current-img-name');
+            if (nameSpan) nameSpan.textContent = getCurrentImgNameForInstance(instId);
+            // 更新缩略图高亮
+            const thumbs = card.querySelectorAll('.thumb');
+            const images = getPartImages(inst.sourcePart);
+            thumbs.forEach((thumb, idx) => {
+                thumb.classList.toggle('selected', images[idx] && images[idx].dataUrl === selectedImages[instId]);
+            });
+        }
+
+        function getCurrentImgNameForInstance(instId) {
+            const url = selectedImages[instId];
+            if (!url) return '未选择';
+            const inst = partInstances.find(i => i.id === instId);
+            if (!inst) return '未选择';
+            const images = getPartImages(inst.sourcePart);
+            const found = images.find(item => item.dataUrl === url);
+            return found ? found.name : '已选';
+        }
+
+        function refreshAllLayerBtns() {
+            document.querySelectorAll('.part-card').forEach(card => {
+                const instId = card.dataset.instanceId;
+                const upBtn = card.querySelector('.up-layer');
+                const downBtn = card.querySelector('.down-layer');
+                const indexSpan = card.querySelector('.layer-index');
+                if (upBtn) upBtn.disabled = renderOrder.indexOf(instId) === renderOrder.length - 1;
+                if (downBtn) downBtn.disabled = renderOrder.indexOf(instId) === 0;
+                if (indexSpan) indexSpan.textContent = renderOrder.indexOf(instId) + 1;
+            });
+        }
+
+        function refreshAllCardsLayerBtns() {
+            document.querySelectorAll('.part-card').forEach(card => {
+                const part = card.dataset.part;
+                const upBtn = card.querySelector('.up-layer');
+                const downBtn = card.querySelector('.down-layer');
+                if (upBtn) upBtn.disabled = renderOrder.indexOf(part) === 0;
+                if (downBtn) downBtn.disabled = renderOrder.indexOf(part) === renderOrder.length - 1;
+            });
+        }
+
+        // ========== 画布合成 ==========
+        function getPartImages(sourcePart) {
+            //获取源部件的图片数组
+            if (!currentCharacter || !characterData[currentCharacter]) return [];
+            return characterData[currentCharacter][sourcePart] || [];
+        }
+
+        function redrawCanvas() {
+            const imgsToDraw = [];
+            for (const instId of renderOrder) {
+                if (!visibleParts.has(instId)) continue;
+                const url = selectedImages[instId];
+                if (url) imgsToDraw.push(url);
+            }
+            if (imgsToDraw.length === 0) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+            const promises = imgsToDraw.map(src => {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = () => resolve(null);
+                    img.src = src;
+                });
+            });
+            Promise.all(promises).then(images => {
+                const validImages = images.filter(Boolean);
+                if (validImages.length === 0) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    return;
+                }
+                let maxW = 0, maxH = 0;
+                validImages.forEach(img => {
+                    if (img.width > maxW) maxW = img.width;
+                    if (img.height > maxH) maxH = img.height;
+                });
+                canvas.width = maxW;
+                canvas.height = maxH;
+                ctx.clearRect(0, 0, maxW, maxH);
+                // 按 renderOrder 顺序绘制
+                for (const instId of renderOrder) {
+                    if (!visibleParts.has(instId)) continue;
+                    const url = selectedImages[instId];
+                    if (!url) continue;
+                    const img = validImages.find(img => img.src === url);
+                    if (!img) continue;
+                    const x = (maxW - img.width) / 2;
+                    const y = maxH - img.height;
+                    ctx.drawImage(img, x, y);
+                }
+            });
+        }
+
+        // ========== 导出 PNG ==========
+        exportBtn.addEventListener('click', () => {
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'dressup.png';
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                // 如果勾选了“同时导出预设”
+                const exportWithPreset = document.getElementById('exportWithPreset');
+                if (exportWithPreset && exportWithPreset.checked) {
+                    const preset = getCurrentPreset();
+                    const presetName = currentCharacter || 'preset';
+                    const json = JSON.stringify(preset, null, 2);
+                    const presetBlob = new Blob([json], { type: 'application/json' });
+                    const presetUrl = URL.createObjectURL(presetBlob);
+                    const presetA = document.createElement('a');
+                    presetA.href = presetUrl;
+                    presetA.download = presetName + '.json';
+                    presetA.click();
+                    URL.revokeObjectURL(presetUrl);
+                }
+            });
+        });
+
+        // ========== 预设导出/导入文件 ==========
+        function getCurrentPreset() {
+            const selIdx = {};
+            for (const inst of partInstances) {
+                const url = selectedImages[inst.id];
+                if (url) {
+                    const images = getPartImages(inst.sourcePart);
+                    const idx = images.findIndex(item => item.dataUrl === url);
+                    selIdx[inst.id] = idx !== -1 ? idx : null;
+                } else {
+                    selIdx[inst.id] = null;
+                }
+            }
+            return {
+                character: currentCharacter,
+                instances: partInstances.map(i => ({
+                    id: i.id,
+                    sourcePart: i.sourcePart,
+                    displayName: i.displayName
+                })),
+                displayOrder: [...displayOrder],
+                renderOrder: [...renderOrder],
+                visibleParts: Array.from(visibleParts),
+                selectedImages: selIdx
+            };
+        }
+
+        function applyPreset(preset) {
+            if (!preset || !preset.character) return false;
+            if (!characterData[preset.character]) {
+                alert(`人物 "${preset.character}" 不存在于当前资源中`);
+                return false;
+            }
+            currentCharacter = preset.character;
+            charSelect.value = currentCharacter;
+            // 重建实例
+            partInstances = (preset.instances || []).map(inst => ({
+                id: inst.id,
+                sourcePart: inst.sourcePart,
+                displayName: inst.displayName || inst.id
+            }));
+            // 如果预设没有实例信息（兼容旧版），则回退为源部件各一个实例
+            if (partInstances.length === 0) {
+                const sourceParts = Object.keys(characterData[currentCharacter]);
+                partInstances = sourceParts.map(p => ({ id: p, sourcePart: p, displayName: p }));
+            }
+            displayOrder = preset.displayOrder || partInstances.map(i => i.id);
+            renderOrder = preset.renderOrder || [...displayOrder];
+            visibleParts = new Set(preset.visibleParts || displayOrder);
+            selectedImages = {};
+            const selIdx = preset.selectedImages || {};
+            for (const inst of partInstances) {
+                const idx = selIdx[inst.id];
+                const images = getPartImages(inst.sourcePart);
+                if (idx !== undefined && idx !== null && images[idx]) {
+                    selectedImages[inst.id] = images[idx].dataUrl;
+                } else {
+                    selectedImages[inst.id] = null;
+                }
+            }
+            // 清理多余的状态键
+            Object.keys(selectedImages).forEach(key => {
+                if (!partInstances.some(i => i.id === key)) delete selectedImages[key];
+            });
+            buildPartsList();
+            redrawCanvas();
+            return true;
+        }
+
+        savePresetFileBtn.addEventListener('click', () => {
+            const preset = getCurrentPreset();
+            const defaultName = currentCharacter || 'preset';
+            const filename = prompt('请输入预设文件名（不含扩展名）', defaultName);
+            if (!filename) return; // 用户取消
+            const json = JSON.stringify(preset, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        loadPresetFileBtn.addEventListener('click', () => presetFileInput.click());
+        presetFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const preset = JSON.parse(ev.target.result);
+                    const presetName = file.name.replace(/\.json$/i, '');
+                    // 自动保存到本地（与手动保存到本地的效果完全相同）
+                    const all = getAllLocalPresets();
+                    all[presetName] = preset;
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+                    updateLocalPresetSelect();
+                    alert(`预设“${presetName}”已导入并保存到本地。`);
+                } catch (err) {
+                    alert('无效的预设文件');
+                }
+            };
+            reader.readAsText(file);
+            presetFileInput.value = '';
+        });
+
+        // ========== 本地存储预设管理 ==========
+        const STORAGE_KEY = 'dressup_presets';
+
+        function getAllLocalPresets() {
+            const json = localStorage.getItem(STORAGE_KEY);
+            return json ? JSON.parse(json) : {};
+        }
+
+        function saveLocalPreset(name) {
+            const all = getAllLocalPresets();
+            all[name] = getCurrentPreset();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+            updateLocalPresetSelect();
+        }
+
+        function loadLocalPreset(name) {
+            const all = getAllLocalPresets();
+            const preset = all[name];
+            if (preset) {
+                applyPreset(preset);
+                alert(`预设“${name}”已加载`);
+            } else {
+                alert('预设不存在');
+            }
+        }
+
+        function deleteLocalPreset(name) {
+            const all = getAllLocalPresets();
+            delete all[name];
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+            updateLocalPresetSelect();
+        }
+
+        function updateLocalPresetSelect() {
+            const all = getAllLocalPresets();
+            const names = Object.keys(all);
+            localPresetSelect.innerHTML = '<option value="">本地预设...</option>' + 
+                names.map(n => `<option value="${n}">${n}</option>`).join('');
+        }
+
+        saveLocalPresetBtn.addEventListener('click', () => {
+            const name = localPresetName.value.trim();
+            if (!name) {
+                alert('请输入预设名称');
+                return;
+            }
+            saveLocalPreset(name);
+            alert(`预设“${name}”已保存到浏览器`);
+            localPresetName.value = '';
+        });
+
+        loadLocalPresetBtn.addEventListener('click', () => {
+            const name = localPresetSelect.value;
+            if (name) loadLocalPreset(name);
+        });
+
+        deleteLocalPresetBtn.addEventListener('click', () => {
+            const name = localPresetSelect.value;
+            if (name && confirm(`确定删除预设“${name}”？`)) {
+                deleteLocalPreset(name);
+                alert('已删除');
+            }
+        });
+
+        // 初始化本地预设下拉
+        updateLocalPresetSelect();
+        
+        // ========== 帮助抽屉控制 ==========
+        const openDrawerBtn = document.getElementById('openDrawerBtn');
+        const closeDrawerBtn = document.getElementById('closeDrawerBtn');
+        const helpDrawer = document.getElementById('helpDrawer');
+
+        openDrawerBtn.addEventListener('click', () => {
+            helpDrawer.style.left = '0';
+        });
+        closeDrawerBtn.addEventListener('click', () => {
+            helpDrawer.style.left = '-380px';
+        });
+        // 点击页面其他区域关闭抽屉（可选）
+        document.addEventListener('click', (e) => {
+            if (!helpDrawer.contains(e.target) && e.target !== openDrawerBtn) {
+                helpDrawer.style.left = '-380px';
+            }
+        });
+
+    </script>
+    
+</body>
+</html>
