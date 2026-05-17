@@ -3,7 +3,7 @@
 一个纯前端换装拼图工具。
 
 ## 🚀 在线使用
-访问：[https://Seaout.github.io/dressup](https://Seaout.github.io/dressup)    
+访问：[https://Seaout.github.io/dressup](https://seaout.github.io/dressup/index.html)  
 **注意**：需要自己准备素材 ZIP 包，或下载下方的示例包。
 
 ## 📦 素材 ZIP 格式
