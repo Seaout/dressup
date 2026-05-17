@@ -31,7 +31,8 @@
 详细帮助请点击页面左上角的 `?` 按钮查看。
 
 ## 📥 示例素材
-下载 [示例](https://github.com/Seaout/dressup/releases) 体验。
+下载 [示例单人包](reference-single.zip)
+下载 [示例多人包](reference-multi.zip)
 
 ## 🛠️ 本地运行
 1. 克隆仓库
